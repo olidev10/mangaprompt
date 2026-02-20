@@ -1,50 +1,47 @@
-# Expo + Supabase Starter Template
+# Expo + Supabase Auth Starter
 
-A minimal starter for Expo apps using Supabase authentication.
+This project is made to help you quickly bootstrap a mobile/web app with:
+- Expo Router navigation
+- Supabase email/password authentication
+- Auth-protected app screens
+- A clean starting structure for building real product features
 
-Included out of the box:
-- Login + signup screen
-- Auth state handling with Supabase session listener
-- Two tab screens: `Home` and `Profile`
-- Profile sign-out action
+It is a starter app, not a finished product. The goal is to remove setup friction so you can start building your own app logic immediately.
 
-## 1. Install dependencies
+## What this project includes
+
+- `app/auth.tsx`: login and sign-up screen
+- `contexts/auth-context.tsx`: auth session state + sign-out
+- `app/_layout.tsx`: route protection and redirect logic
+- `app/(tabs)/home.tsx`: example authenticated home screen
+- `app/(tabs)/profile.tsx`: example profile screen with sign-out
+- `lib/supabase.ts`: Supabase client initialization
+
+## Quick start
+
+1. Install dependencies:
 
 ```bash
 npm install
 ```
 
-## 2. Configure environment variables
-
-Create a `.env` file in the project root:
+2. Create `.env` in the project root:
 
 ```bash
 EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 ```
 
-These values are available in Supabase dashboard:
-- `Settings` -> `API` -> `Project URL`
-- `Settings` -> `API` -> `anon public`
-
-## 3. Start the app
+3. Start the app:
 
 ```bash
 npm run start
 ```
 
-Then open on iOS, Android, or web from the Expo CLI menu.
+From the Expo CLI, run on iOS, Android, or web.
 
-## Project Structure
+## Who this is for
 
-- `src/app/index.tsx`: auth gate and initial redirect
-- `src/app/auth.tsx`: login/signup screen
-- `src/app/(tabs)/index.tsx`: Home tab
-- `src/app/(tabs)/profile.tsx`: Profile tab with sign out
-- `hooks/useAuth.ts`: shared auth session hook
-- `src/lib/supabase.ts`: Supabase client
-
-## Notes
-
-- If email confirmation is enabled in Supabase, users must verify email before first login.
-- This is intentionally minimal so you can start shipping quickly.
+- Developers starting a new Expo app that needs auth
+- Teams that want a simple Supabase auth baseline
+- Anyone who wants to skip boilerplate and move straight to product features
