@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "temp-expo-supabase",
-    "slug": "temp-expo-supabase",
+    "name": "MangaPrompt",
+    "slug": "MangaPrompt",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
