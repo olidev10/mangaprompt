@@ -1,13 +1,15 @@
 import { useFocusEffect } from "@react-navigation/native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { BookOpenText, MoreVertical, Plus } from "lucide-react-native";
+import { BookOpenText, MoreVertical, Plus, X } from "lucide-react-native";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -138,7 +140,9 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [projects, setProjects] = useState<ProjectCard[]>([]);
   const [activeProject, setActiveProject] = useState<ProjectCard | null>(null);
+  const [viewerProject, setViewerProject] = useState<ProjectCard | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const screenWidth = Dimensions.get("window").width;
 
   const fetchProjects = useCallback(async () => {
     const { data: authData, error: authError } = await supabase.auth.getUser();
@@ -293,13 +297,16 @@ export default function HomeScreen() {
           onRefresh={onRefresh}
           contentContainerStyle={listContentStyle}
           renderItem={({ item }) => (
-            <View
-              style={[
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setViewerProject(item)}
+              style={({ pressed }) => [
                 styles.card,
                 {
                   backgroundColor: palette.surface,
                   borderColor: palette.border,
                 },
+                pressed ? styles.pressed : null,
               ]}
             >
               <Image
@@ -319,7 +326,10 @@ export default function HomeScreen() {
 
                   <Pressable
                     accessibilityRole="button"
-                    onPress={() => setActiveProject(item)}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      setActiveProject(item);
+                    }}
                     style={({ pressed }) => [
                       styles.menuButton,
                       { borderColor: palette.border },
@@ -337,7 +347,7 @@ export default function HomeScreen() {
                   {new Date(item.createdAt).toLocaleString()}
                 </Text>
               </View>
-            </View>
+            </Pressable>
           )}
           ListEmptyComponent={
             <View
@@ -421,6 +431,41 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         </Pressable>
+      </Modal>
+
+      <Modal
+        visible={viewerProject !== null}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setViewerProject(null)}
+      >
+        <View style={styles.viewerRoot}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setViewerProject(null)}
+            style={styles.viewerClose}
+          >
+            <X size={24} color="#FFFFFF" />
+          </Pressable>
+
+          <FlatList
+            data={viewerProject?.pageImageUrls ?? []}
+            keyExtractor={(item, index) => `${item}-${index}`}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <View style={[styles.viewerPage, { width: screenWidth }]}>
+                <Image source={{ uri: item }} style={styles.viewerImage} contentFit="contain" />
+              </View>
+            )}
+            ListEmptyComponent={
+              <View style={[styles.viewerPage, { width: screenWidth }]}>
+                <Text style={styles.viewerEmptyText}>No pages available.</Text>
+              </View>
+            }
+          />
+        </View>
       </Modal>
     </View>
   );
@@ -560,5 +605,35 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.86,
+  },
+  viewerRoot: {
+    flex: 1,
+    backgroundColor: "#000000",
+    paddingTop: Platform.select({ ios: 54, default: 20 }),
+  },
+  viewerClose: {
+    position: "absolute",
+    top: Platform.select({ ios: 58, default: 20 }),
+    right: 14,
+    zIndex: 4,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  viewerPage: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  viewerImage: {
+    width: "100%",
+    height: "100%",
+  },
+  viewerEmptyText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "600",
   },
 });
