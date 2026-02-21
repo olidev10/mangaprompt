@@ -1,4 +1,5 @@
 // src/app/_layout.tsx
+import { MangaLibraryProvider } from "@/contexts/manga-library-context";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { Redirect, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -51,6 +52,13 @@ function RootInner() {
       <Stack>
         <Stack.Screen name="auth" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="process"
+          options={{
+            headerShown: false,
+            gestureEnabled: false,
+          }}
+        />
       </Stack>
     </>
   );
@@ -59,7 +67,9 @@ function RootInner() {
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <RootInner />
+      <MangaLibraryProvider>
+        <RootInner />
+      </MangaLibraryProvider>
     </AuthProvider>
   );
 }

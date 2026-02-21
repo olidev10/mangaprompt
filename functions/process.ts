@@ -9,6 +9,31 @@ type CharacterGeneration = {
   imageUrl: string;
 };
 
+export type ProcessLogStage =
+  | "validation"
+  | "plan"
+  | "characters"
+  | "pages"
+  | "pdf"
+  | "done"
+  | "unexpected";
+
+export type ProcessLog = {
+  id: string;
+  stage: ProcessLogStage;
+  message: string;
+  createdAt: string;
+};
+
+export type ProcessProgressEvent = ProcessLog & {
+  pageImageUrl?: string;
+  pageIndex?: number;
+};
+
+export type ProcessMangaOptions = {
+  onProgress?: (event: ProcessProgressEvent) => void;
+};
+
 export type ProcessMangaSuccess = {
   ok: true;
   data: {
@@ -17,6 +42,7 @@ export type ProcessMangaSuccess = {
     characters: CharacterGeneration[];
     pageImageUrls: string[];
     pdfLocalUri: string;
+    logs: ProcessLog[];
   };
 };
 
@@ -24,6 +50,7 @@ export type ProcessMangaFailure = {
   ok: false;
   stage: "plan" | "characters" | "pages" | "pdf" | "validation" | "unexpected";
   error: string;
+  logs: ProcessLog[];
 };
 
 export type ProcessMangaResult = ProcessMangaSuccess | ProcessMangaFailure;
@@ -120,6 +147,31 @@ const getCharacterIndexesForPage = (page: MangaOutput["pages"][number]) => {
   return [...indexes];
 };
 
+const createProgressLog = (
+  logs: ProcessLog[],
+  onProgress: ProcessMangaOptions["onProgress"],
+  stage: ProcessLogStage,
+  message: string,
+  extras?: Pick<ProcessProgressEvent, "pageImageUrl" | "pageIndex">,
+) => {
+  const event: ProcessProgressEvent = {
+    id: `${Date.now()}-${logs.length + 1}`,
+    stage,
+    message,
+    createdAt: new Date().toISOString(),
+    ...(extras ?? {}),
+  };
+
+  logs.push({
+    id: event.id,
+    stage: event.stage,
+    message: event.message,
+    createdAt: event.createdAt,
+  });
+
+  onProgress?.(event);
+};
+
 /**
  * Pipeline:
  * 1) Generate structured plan
@@ -130,50 +182,108 @@ const getCharacterIndexesForPage = (page: MangaOutput["pages"][number]) => {
 export async function processMangaGeneration(
   prompt: string,
   totalPages: number,
+  options: ProcessMangaOptions = {},
 ): Promise<ProcessMangaResult> {
+  const logs: ProcessLog[] = [];
+
   try {
     const trimmedPrompt = prompt.trim();
     if (!trimmedPrompt) {
+      createProgressLog(
+        logs,
+        options.onProgress,
+        "validation",
+        "Prompt cannot be empty.",
+      );
       return {
         ok: false,
         stage: "validation",
         error: "Prompt cannot be empty.",
+        logs,
       };
     }
 
     if (!Number.isInteger(totalPages) || totalPages < 1) {
+      createProgressLog(
+        logs,
+        options.onProgress,
+        "validation",
+        "Page count must be a positive integer.",
+      );
       return {
         ok: false,
         stage: "validation",
         error: "totalPages must be a positive integer.",
+        logs,
       };
     }
 
+    createProgressLog(
+      logs,
+      options.onProgress,
+      "plan",
+      "Generating manga plan...",
+    );
+
     const planResult = await generatePlan(trimmedPrompt, totalPages);
     if (!planResult.ok) {
+      createProgressLog(
+        logs,
+        options.onProgress,
+        "plan",
+        `Failed to generate plan: ${planResult.error}`,
+      );
       return {
         ok: false,
         stage: "plan",
         error: planResult.error,
+        logs,
       };
     }
 
     const plan = planResult.data;
+    createProgressLog(
+      logs,
+      options.onProgress,
+      "plan",
+      `Plan ready: \"${plan.title}\" with ${plan.characters.length} characters.`,
+    );
 
     const characters: CharacterGeneration[] = [];
-    for (const character of plan.characters.sort((a, b) => a.index - b.index)) {
+    const sortedCharacters = [...plan.characters].sort(
+      (a, b) => a.index - b.index,
+    );
+
+    for (const character of sortedCharacters) {
+      createProgressLog(
+        logs,
+        options.onProgress,
+        "characters",
+        `Generating character ${character.index + 1}/${sortedCharacters.length}: ${character.name}`,
+      );
+
       const characterResult = await generateCharacter(
         character.name,
         character.description,
       );
 
       if (!characterResult.imageUrl) {
+        const error =
+          characterResult.error ??
+          `Failed to generate character image for ${character.name}.`;
+
+        createProgressLog(
+          logs,
+          options.onProgress,
+          "characters",
+          `Character generation failed: ${error}`,
+        );
+
         return {
           ok: false,
           stage: "characters",
-          error:
-            characterResult.error ??
-            `Failed to generate character image for ${character.name}.`,
+          error,
+          logs,
         };
       }
 
@@ -183,10 +293,27 @@ export async function processMangaGeneration(
         description: character.description,
         imageUrl: characterResult.imageUrl,
       });
+
+      createProgressLog(
+        logs,
+        options.onProgress,
+        "characters",
+        `Character ready: ${character.name}`,
+      );
     }
 
+    const sortedPages = [...plan.pages].sort((a, b) => a.index - b.index);
     const pageImageUrls: string[] = [];
-    for (const page of plan.pages.sort((a, b) => a.index - b.index)) {
+
+    for (const page of sortedPages) {
+      createProgressLog(
+        logs,
+        options.onProgress,
+        "pages",
+        `Generating page ${page.index + 1}/${sortedPages.length}`,
+        { pageIndex: page.index },
+      );
+
       const pageCharacterIndexes = getCharacterIndexesForPage(page);
       const referenceImages = pageCharacterIndexes
         .map((characterIndex) =>
@@ -201,19 +328,39 @@ export async function processMangaGeneration(
       );
 
       if (!pageResult.imageUrl) {
+        const error =
+          pageResult.error ??
+          `Failed to generate image for page ${page.index + 1}.`;
+
+        createProgressLog(
+          logs,
+          options.onProgress,
+          "pages",
+          `Page generation failed on page ${page.index + 1}: ${error}`,
+          { pageIndex: page.index },
+        );
+
         return {
           ok: false,
           stage: "pages",
-          error:
-            pageResult.error ??
-            `Failed to generate image for page ${page.index + 1}.`,
+          error,
+          logs,
         };
       }
 
       pageImageUrls.push(pageResult.imageUrl);
+
+      createProgressLog(
+        logs,
+        options.onProgress,
+        "pages",
+        `Page ${page.index + 1} ready.`,
+        { pageImageUrl: pageResult.imageUrl, pageIndex: page.index },
+      );
     }
 
     try {
+      createProgressLog(logs, options.onProgress, "pdf", "Building PDF...");
       const html = toPdfHtml(plan.title, pageImageUrls);
       const pdf = await Print.printToFileAsync({
         html,
@@ -221,12 +368,26 @@ export async function processMangaGeneration(
       });
 
       if (!pdf?.uri) {
+        createProgressLog(
+          logs,
+          options.onProgress,
+          "pdf",
+          "PDF generation did not return a local URI.",
+        );
         return {
           ok: false,
           stage: "pdf",
           error: "PDF generation did not return a local URI.",
+          logs,
         };
       }
+
+      createProgressLog(
+        logs,
+        options.onProgress,
+        "done",
+        "Manga generation complete.",
+      );
 
       return {
         ok: true,
@@ -236,22 +397,32 @@ export async function processMangaGeneration(
           characters,
           pageImageUrls,
           pdfLocalUri: pdf.uri,
+          logs,
         },
       };
     } catch (error) {
+      const message =
+        "PDF generation failed." +
+        (error instanceof Error ? error.message : String(error));
+
+      createProgressLog(logs, options.onProgress, "pdf", message);
+
       return {
         ok: false,
         stage: "pdf",
-        error:
-          "PDF generation failed. Install expo-print (`npx expo install expo-print`) and try again. " +
-          (error instanceof Error ? error.message : String(error)),
+        error: message,
+        logs,
       };
     }
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    createProgressLog(logs, options.onProgress, "unexpected", message);
+
     return {
       ok: false,
       stage: "unexpected",
-      error: error instanceof Error ? error.message : String(error),
+      error: message,
+      logs,
     };
   }
 }

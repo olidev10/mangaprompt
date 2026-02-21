@@ -1,9 +1,9 @@
 import { Tabs, useRouter } from "expo-router";
+import { House, PlusSquare, UserRound } from "lucide-react-native";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 
 import { HapticTab } from "@/components/haptic-tab";
-import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Colors } from "@/constants/theme";
 import { useAuth } from "@/contexts/auth-context";
 import { useColorScheme } from "@/hooks/use-color-scheme";
@@ -50,18 +50,21 @@ export default function TabLayout() {
         name="home"
         options={{
           title: "Home",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="house.fill" color={color} />
-          ),
+          tabBarIcon: ({ color }) => <House size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="create"
+        options={{
+          title: "Create",
+          tabBarIcon: ({ color }) => <PlusSquare size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="person.fill" color={color} />
-          ),
+          tabBarIcon: ({ color }) => <UserRound size={22} color={color} />,
         }}
       />
     </Tabs>
