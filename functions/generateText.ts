@@ -1,40 +1,36 @@
-const REPLICATE_API_KEY = process.env.EXPO_PUBLIC_REPLICATE_API_KEY;
+import { createPrediction, getPrediction } from "./predictions";
 
 export async function generatePlan(
   prompt: string,
   totalPages: number,
 ): Promise<{ ok: true; data: MangaOutput } | { ok: false; error: string }> {
   try {
-    const response = await fetch(
-      "https://api.replicate.com/v1/models/openai/gpt-5/predictions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${REPLICATE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          stream: false,
-          input: {
-            prompt: `build a total of ${totalPages} pages based on this story: \n${prompt}`,
-            system_prompt: system_page,
-            verbosity: "medium",
-            image_input: [],
-            reasoning_effort: "minimal",
-          },
-        }),
+    //  create a predictions
+    const body = {
+      stream: false,
+      input: {
+        prompt: `build a total of ${totalPages} pages based on this story: \n${prompt}`,
+        system_prompt: system_page,
+        verbosity: "medium",
+        image_input: [],
+        reasoning_effort: "minimal",
       },
-    );
-
-    const data = await response.json();
-    if (!response.ok) {
-      console.log("Error from Replicate API", data.error);
-      throw new Error(`Replicate API error: ${data.error || "Unknown error"}`);
+    };
+    const createResp = await createPrediction("openai/gpt-5", body);
+    if (!createResp.ok) {
+      throw new Error(createResp.error);
     }
 
-    console.log("metrics from Replicate API", data.metrics);
-    const outputString = data.output.join("").replace(/\n/g, "");
-    console.log("Raw output from AI:", outputString);
+    // get the output from the predictions
+    const getResp = await getPrediction(createResp.getUrl);
+    if (!getResp.ok) {
+      throw new Error(getResp.error);
+    }
+
+    const output = getResp.output; // this a a list of string, we need to join them and parse the JSON
+
+    const outputString = output.join("").replace(/\n/g, "");
+    // console.log("Raw output from AI:", outputString);
     const parsed = JSON.parse(outputString) as MangaOutput;
     return { ok: true, data: parsed };
   } catch (e) {

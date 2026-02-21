@@ -28,8 +28,8 @@ export default function CreateScreen() {
   const scheme = useColorScheme() ?? "light";
   const palette = Colors[scheme];
 
-  const [prompt, setPrompt] = useState("");
-  const [totalPages, setTotalPages] = useState(6);
+  const [prompt, setPrompt] = useState(STORY_SEEDS[0]);
+  const [totalPages, setTotalPages] = useState(2);
 
   const isValid = prompt.trim().length > 0 && totalPages > 0;
 
@@ -65,8 +65,12 @@ export default function CreateScreen() {
       behavior={Platform.select({ ios: "padding", default: undefined })}
     >
       <View style={styles.content}>
-        <Text style={[styles.title, { color: palette.text }]}>Create Manga</Text>
-        <Text style={[styles.subtitle, { color: palette.muted }]}>Type a story prompt and pick page count.</Text>
+        <Text style={[styles.title, { color: palette.text }]}>
+          Create Manga
+        </Text>
+        <Text style={[styles.subtitle, { color: palette.muted }]}>
+          Type a story prompt and pick page count.
+        </Text>
 
         <Text style={[styles.label, { color: palette.text }]}>Prompt</Text>
         <TextInput
@@ -99,23 +103,40 @@ export default function CreateScreen() {
           ]}
         >
           <Dices size={18} color={palette.text} />
-          <Text style={[styles.diceText, { color: palette.text }]}>Dice prompt</Text>
+          <Text style={[styles.diceText, { color: palette.text }]}>
+            Dice prompt
+          </Text>
         </Pressable>
 
-        <Text style={[styles.label, { color: palette.text }]}>Number of pages</Text>
-        <View style={[styles.counterRow, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+        <Text style={[styles.label, { color: palette.text }]}>
+          Number of pages
+        </Text>
+        <View
+          style={[
+            styles.counterRow,
+            { backgroundColor: palette.surface, borderColor: palette.border },
+          ]}
+        >
           <Pressable
             accessibilityRole="button"
             onPress={() => updatePages(totalPages - 1)}
-            style={({ pressed }) => [styles.counterBtn, pressed ? styles.pressed : null]}
+            style={({ pressed }) => [
+              styles.counterBtn,
+              pressed ? styles.pressed : null,
+            ]}
           >
             <Minus size={20} color={palette.text} />
           </Pressable>
-          <Text style={[styles.pageValue, { color: palette.text }]}>{totalPages}</Text>
+          <Text style={[styles.pageValue, { color: palette.text }]}>
+            {totalPages}
+          </Text>
           <Pressable
             accessibilityRole="button"
             onPress={() => updatePages(totalPages + 1)}
-            style={({ pressed }) => [styles.counterBtn, pressed ? styles.pressed : null]}
+            style={({ pressed }) => [
+              styles.counterBtn,
+              pressed ? styles.pressed : null,
+            ]}
           >
             <Plus size={20} color={palette.text} />
           </Pressable>

@@ -1,5 +1,10 @@
 import { Image } from "expo-image";
-import { Stack, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import {
+  Stack,
+  useLocalSearchParams,
+  useNavigation,
+  useRouter,
+} from "expo-router";
 import { Download, LoaderCircle, X } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -27,7 +32,10 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 export default function ProcessScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const params = useLocalSearchParams<{ prompt?: string; totalPages?: string }>();
+  const params = useLocalSearchParams<{
+    prompt?: string;
+    totalPages?: string;
+  }>();
 
   const scheme = useColorScheme() ?? "light";
   const palette = Colors[scheme];
@@ -61,7 +69,10 @@ export default function ProcessScreen() {
     if (!isRunning) return;
 
     const onBackPress = () => true;
-    const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onBackPress,
+    );
 
     return () => subscription.remove();
   }, [isRunning]);
@@ -127,6 +138,7 @@ export default function ProcessScreen() {
 
   const openPdf = async () => {
     if (!pdfUri) return;
+    console.log("Opening PDF at URI:", pdfUri);
     await Linking.openURL(pdfUri);
   };
 
@@ -138,19 +150,27 @@ export default function ProcessScreen() {
         <Text style={[styles.title, { color: palette.text }]} numberOfLines={1}>
           {title}
         </Text>
-        <Text style={[styles.subtitle, { color: palette.muted }]}>{statusText}</Text>
+        <Text style={[styles.subtitle, { color: palette.muted }]}>
+          {statusText}
+        </Text>
       </View>
 
       {isRunning ? (
         <View style={styles.runningBox}>
           <LoaderCircle size={18} color={palette.tint} />
-          <Text style={[styles.runningText, { color: palette.text }]}>Please keep this screen open while pages are being generated.</Text>
+          <Text style={[styles.runningText, { color: palette.text }]}>
+            Please keep this screen open while pages are being generated.
+          </Text>
         </View>
       ) : null}
 
-      {error ? <Text style={[styles.error, { color: "#DC2626" }]}>{error}</Text> : null}
+      {error ? (
+        <Text style={[styles.error, { color: "#DC2626" }]}>{error}</Text>
+      ) : null}
 
-      <Text style={[styles.sectionTitle, { color: palette.text }]}>Generated pages</Text>
+      <Text style={[styles.sectionTitle, { color: palette.text }]}>
+        Generated pages
+      </Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -163,7 +183,9 @@ export default function ProcessScreen() {
               { borderColor: palette.border, backgroundColor: palette.surface },
             ]}
           >
-            <Text style={[styles.placeholderText, { color: palette.muted }]}>Pages will appear here as they finish.</Text>
+            <Text style={[styles.placeholderText, { color: palette.muted }]}>
+              Pages will appear here as they finish.
+            </Text>
           </View>
         ) : (
           pageImages.map((uri, index) => (
@@ -171,16 +193,27 @@ export default function ProcessScreen() {
               key={`${uri}-${index}`}
               accessibilityRole="button"
               onPress={() => setViewerIndex(index)}
-              style={({ pressed }) => [styles.pageCard, pressed ? styles.pressed : null]}
+              style={({ pressed }) => [
+                styles.pageCard,
+                pressed ? styles.pressed : null,
+              ]}
             >
-              <Image source={{ uri }} style={styles.pageImage} contentFit="cover" />
-              <Text style={[styles.pageLabel, { color: palette.text }]}>Page {index + 1}</Text>
+              <Image
+                source={{ uri }}
+                style={styles.pageImage}
+                contentFit="cover"
+              />
+              <Text style={[styles.pageLabel, { color: palette.text }]}>
+                Page {index + 1}
+              </Text>
             </Pressable>
           ))
         )}
       </ScrollView>
 
-      <Text style={[styles.sectionTitle, { color: palette.text }]}>Progress logs</Text>
+      <Text style={[styles.sectionTitle, { color: palette.text }]}>
+        Progress logs
+      </Text>
       <ScrollView
         style={[
           styles.logs,
@@ -192,7 +225,9 @@ export default function ProcessScreen() {
             <Text style={[styles.logStage, { color: palette.tint }]}>
               {log.stage.toUpperCase()}
             </Text>
-            <Text style={[styles.logText, { color: palette.text }]}>{log.message}</Text>
+            <Text style={[styles.logText, { color: palette.text }]}>
+              {log.message}
+            </Text>
           </View>
         ))}
       </ScrollView>
@@ -223,12 +258,18 @@ export default function ProcessScreen() {
               pressed ? styles.pressed : null,
             ]}
           >
-            <Text style={[styles.homeBtnText, { color: palette.text }]}>Back to Home</Text>
+            <Text style={[styles.homeBtnText, { color: palette.text }]}>
+              Back to Home
+            </Text>
           </Pressable>
         </View>
       ) : null}
 
-      <Modal visible={viewerIndex !== null} animationType="slide" presentationStyle="fullScreen">
+      <Modal
+        visible={viewerIndex !== null}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
         <View style={[styles.modalRoot, { backgroundColor: "#000000" }]}>
           <Pressable
             accessibilityRole="button"
@@ -245,8 +286,15 @@ export default function ProcessScreen() {
             showsHorizontalScrollIndicator={false}
           >
             {pageImages.map((item, index) => (
-              <View key={`${item}-${index}`} style={[styles.modalPage, { width: screenWidth }]}> 
-                <Image source={{ uri: item }} style={styles.modalImage} contentFit="contain" />
+              <View
+                key={`${item}-${index}`}
+                style={[styles.modalPage, { width: screenWidth }]}
+              >
+                <Image
+                  source={{ uri: item }}
+                  style={styles.modalImage}
+                  contentFit="contain"
+                />
               </View>
             ))}
           </ScrollView>
