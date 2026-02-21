@@ -35,6 +35,7 @@ export type Database = {
       Projects: {
         Row: {
           characters: Json | null
+          cover_url: string | null
           created_at: string
           id: number
           pages: Json
@@ -46,6 +47,7 @@ export type Database = {
         }
         Insert: {
           characters?: Json | null
+          cover_url?: string | null
           created_at?: string
           id?: number
           pages?: Json
@@ -57,6 +59,7 @@ export type Database = {
         }
         Update: {
           characters?: Json | null
+          cover_url?: string | null
           created_at?: string
           id?: number
           pages?: Json

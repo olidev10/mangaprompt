@@ -1,6 +1,7 @@
 import { generateCharacter, generatePage } from "@/functions/generateImage";
 import { generatePlan, type MangaOutput } from "@/functions/generateText";
-import * as Print from "expo-print";
+import type { TablesInsert, TablesUpdate } from "@/lib/database";
+import { supabase } from "@/lib/supabase";
 
 type CharacterGeneration = {
   index: number;
@@ -11,10 +12,11 @@ type CharacterGeneration = {
 
 export type ProcessLogStage =
   | "validation"
+  | "project"
   | "plan"
   | "characters"
   | "pages"
-  | "pdf"
+  | "storage"
   | "done"
   | "unexpected";
 
@@ -37,18 +39,25 @@ export type ProcessMangaOptions = {
 export type ProcessMangaSuccess = {
   ok: true;
   data: {
+    projectId: number;
     title: string;
     plan: MangaOutput;
     characters: CharacterGeneration[];
     pageImageUrls: string[];
-    pdfLocalUri: string;
     logs: ProcessLog[];
   };
 };
 
 export type ProcessMangaFailure = {
   ok: false;
-  stage: "plan" | "characters" | "pages" | "pdf" | "validation" | "unexpected";
+  stage:
+    | "validation"
+    | "project"
+    | "plan"
+    | "characters"
+    | "pages"
+    | "storage"
+    | "unexpected";
   error: string;
   logs: ProcessLog[];
 };
@@ -94,49 +103,6 @@ const toPagePrompt = (
     .join("\n\n");
 };
 
-const toPdfHtml = (title: string, pageImageUrls: string[]) => {
-  const pagesMarkup = pageImageUrls
-    .map(
-      (url, i) => `
-      <section class="page">
-        <img src="${url}" alt="Manga page ${i + 1}" />
-      </section>`,
-    )
-    .join("");
-
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>${title}</title>
-    <style>
-      @page { size: A4; margin: 0; }
-      html, body {
-        margin: 0;
-        padding: 0;
-        background: #000;
-      }
-      .page {
-        page-break-after: always;
-        width: 100%;
-        height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: #000;
-      }
-      .page:last-child { page-break-after: auto; }
-      img {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-      }
-    </style>
-  </head>
-  <body>${pagesMarkup}</body>
-</html>`;
-};
-
 const getCharacterIndexesForPage = (page: MangaOutput["pages"][number]) => {
   const indexes = new Set<number>();
   for (const panel of page.panels) {
@@ -172,12 +138,52 @@ const createProgressLog = (
   onProgress?.(event);
 };
 
+const markProjectFailed = async (projectId: number, userId: string) => {
+  const updates: TablesUpdate<"Projects"> = {
+    status: "failed",
+  };
+
+  await supabase
+    .from("Projects")
+    .update(updates)
+    .eq("id", projectId)
+    .eq("user_id", userId);
+};
+
+const uploadExternalImageToPagesBucket = async (
+  sourceUrl: string,
+  destinationPath: string,
+) => {
+  const response = await fetch(sourceUrl);
+  if (!response.ok) {
+    throw new Error(`Could not fetch generated image (${response.status}).`);
+  }
+
+  const contentType = response.headers.get("content-type") || "image/jpeg";
+  const bytes = await response.arrayBuffer();
+
+  const { error: uploadError } = await supabase.storage
+    .from("pages")
+    .upload(destinationPath, bytes, {
+      contentType,
+      upsert: true,
+    });
+
+  if (uploadError) {
+    throw new Error(uploadError.message);
+  }
+
+  const { data } = supabase.storage.from("pages").getPublicUrl(destinationPath);
+  return data.publicUrl;
+};
+
 /**
  * Pipeline:
  * 1) Generate structured plan
  * 2) Generate character sheets
  * 3) Generate each manga page from panel descriptions + character refs
- * 4) Convert page images to local PDF
+ * 4) Upload assets to Supabase Storage
+ * 5) Persist final project in Supabase
  */
 export async function processMangaGeneration(
   prompt: string,
@@ -185,6 +191,8 @@ export async function processMangaGeneration(
   options: ProcessMangaOptions = {},
 ): Promise<ProcessMangaResult> {
   const logs: ProcessLog[] = [];
+  let projectId: number | null = null;
+  let userId: string | null = null;
 
   try {
     const trimmedPrompt = prompt.trim();
@@ -218,6 +226,60 @@ export async function processMangaGeneration(
       };
     }
 
+    const userResult = await supabase.auth.getUser();
+    if (userResult.error || !userResult.data.user) {
+      createProgressLog(
+        logs,
+        options.onProgress,
+        "validation",
+        "User not authenticated.",
+      );
+      return {
+        ok: false,
+        stage: "validation",
+        error: "User not authenticated.",
+        logs,
+      };
+    }
+
+    userId = userResult.data.user.id;
+    createProgressLog(
+      logs,
+      options.onProgress,
+      "project",
+      "Creating project...",
+    );
+
+    const initialProject: TablesInsert<"Projects"> = {
+      user_id: userId,
+      title: "Untitled",
+      total_pages: totalPages,
+      status: "queued",
+      pages: [],
+      plan: null,
+      characters: [],
+    };
+
+    const { data: createdProject, error: createProjectError } = await supabase
+      .from("Projects")
+      .insert(initialProject)
+      .select("id")
+      .single();
+
+    if (createProjectError || !createdProject) {
+      const message =
+        createProjectError?.message ?? "Failed to create project row.";
+      createProgressLog(logs, options.onProgress, "project", message);
+      return {
+        ok: false,
+        stage: "project",
+        error: message,
+        logs,
+      };
+    }
+
+    projectId = createdProject.id;
+
     createProgressLog(
       logs,
       options.onProgress,
@@ -227,6 +289,9 @@ export async function processMangaGeneration(
 
     const planResult = await generatePlan(trimmedPrompt, totalPages);
     if (!planResult.ok) {
+      if (projectId !== null) {
+        await markProjectFailed(projectId, userId);
+      }
       createProgressLog(
         logs,
         options.onProgress,
@@ -242,6 +307,19 @@ export async function processMangaGeneration(
     }
 
     const plan = planResult.data;
+
+    const processingUpdate: TablesUpdate<"Projects"> = {
+      title: plan.title,
+      plan,
+      status: "processing",
+    };
+
+    await supabase
+      .from("Projects")
+      .update(processingUpdate)
+      .eq("id", projectId)
+      .eq("user_id", userId);
+
     createProgressLog(
       logs,
       options.onProgress,
@@ -249,6 +327,7 @@ export async function processMangaGeneration(
       `Plan ready: \"${plan.title}\" with ${plan.characters.length} characters.`,
     );
 
+    // Generate character images first so we can use them as references for page generation
     const characters: CharacterGeneration[] = [];
     const sortedCharacters = [...plan.characters].sort(
       (a, b) => a.index - b.index,
@@ -272,6 +351,7 @@ export async function processMangaGeneration(
           characterResult.error ??
           `Failed to generate character image for ${character.name}.`;
 
+        await markProjectFailed(projectId, userId);
         createProgressLog(
           logs,
           options.onProgress,
@@ -302,6 +382,32 @@ export async function processMangaGeneration(
       );
     }
 
+    // Upload character images to storage and get public URLs
+    createProgressLog(
+      logs,
+      options.onProgress,
+      "storage",
+      "Uploading character assets to storage...",
+    );
+
+    const characterAssets: CharacterGeneration[] = [];
+    for (const character of characters) {
+      const characterPath = `${userId}/${projectId}/character-${String(
+        character.index + 1,
+      ).padStart(3, "0")}.jpg`;
+
+      const publicUrl = await uploadExternalImageToPagesBucket(
+        character.imageUrl,
+        characterPath,
+      );
+
+      characterAssets.push({
+        ...character,
+        imageUrl: publicUrl,
+      });
+    }
+
+    // Now generate pages with character references
     const sortedPages = [...plan.pages].sort((a, b) => a.index - b.index);
     const pageImageUrls: string[] = [];
 
@@ -317,7 +423,9 @@ export async function processMangaGeneration(
       const pageCharacterIndexes = getCharacterIndexesForPage(page);
       const referenceImages = pageCharacterIndexes
         .map((characterIndex) =>
-          characters.find((character) => character.index === characterIndex),
+          characterAssets.find(
+            (character) => character.index === characterIndex,
+          ),
         )
         .filter((character): character is CharacterGeneration => !!character)
         .map((character) => character.imageUrl);
@@ -332,6 +440,7 @@ export async function processMangaGeneration(
           pageResult.error ??
           `Failed to generate image for page ${page.index + 1}.`;
 
+        await markProjectFailed(projectId, userId);
         createProgressLog(
           logs,
           options.onProgress,
@@ -348,75 +457,90 @@ export async function processMangaGeneration(
         };
       }
 
-      pageImageUrls.push(pageResult.imageUrl);
+      createProgressLog(
+        logs,
+        options.onProgress,
+        "storage",
+        `Uploading page ${page.index + 1}/${sortedPages.length}`,
+        { pageIndex: page.index },
+      );
+
+      const pagePath = `${userId}/${projectId}/page-${String(
+        page.index + 1,
+      ).padStart(3, "0")}.jpg`;
+
+      const pagePublicUrl = await uploadExternalImageToPagesBucket(
+        pageResult.imageUrl,
+        pagePath,
+      );
+
+      pageImageUrls.push(pagePublicUrl);
 
       createProgressLog(
         logs,
         options.onProgress,
         "pages",
         `Page ${page.index + 1} ready.`,
-        { pageImageUrl: pageResult.imageUrl, pageIndex: page.index },
+        { pageImageUrl: pagePublicUrl, pageIndex: page.index },
       );
     }
 
-    try {
-      createProgressLog(logs, options.onProgress, "pdf", "Building PDF...");
-      const html = toPdfHtml(plan.title, pageImageUrls);
-      const pdf = await Print.printToFileAsync({
-        html,
-        base64: false,
-      });
+    // Final update to project with all details and asset URLs
+    const finalUpdate: TablesUpdate<"Projects"> = {
+      title: plan.title,
+      total_pages: totalPages,
+      plan,
+      pages: sortedPages.map((page, index) => ({
+        index: page.index,
+        characters: getCharacterIndexesForPage(page),
+        panels: page.panels,
+        imageUrl: pageImageUrls[index] ?? null,
+      })),
+      characters: characterAssets,
+      status: "complete",
+      cover_url: pageImageUrls[0] ?? null,
+    };
 
-      if (!pdf?.uri) {
-        createProgressLog(
-          logs,
-          options.onProgress,
-          "pdf",
-          "PDF generation did not return a local URI.",
-        );
-        return {
-          ok: false,
-          stage: "pdf",
-          error: "PDF generation did not return a local URI.",
-          logs,
-        };
-      }
+    const { error: finalizeError } = await supabase
+      .from("Projects")
+      .update(finalUpdate)
+      .eq("id", projectId)
+      .eq("user_id", userId);
 
+    if (finalizeError) {
       createProgressLog(
         logs,
         options.onProgress,
-        "done",
-        "Manga generation complete.",
+        "project",
+        `Project update warning: ${finalizeError.message}`,
       );
-
-      return {
-        ok: true,
-        data: {
-          title: plan.title,
-          plan,
-          characters,
-          pageImageUrls,
-          pdfLocalUri: pdf.uri,
-          logs,
-        },
-      };
-    } catch (error) {
-      const message =
-        "PDF generation failed." +
-        (error instanceof Error ? error.message : String(error));
-
-      createProgressLog(logs, options.onProgress, "pdf", message);
-
-      return {
-        ok: false,
-        stage: "pdf",
-        error: message,
-        logs,
-      };
     }
+
+    createProgressLog(
+      logs,
+      options.onProgress,
+      "done",
+      "Manga generation complete.",
+    );
+
+    return {
+      ok: true,
+      data: {
+        projectId,
+        title: plan.title,
+        plan,
+        characters: characterAssets,
+        pageImageUrls,
+        logs,
+      },
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     createProgressLog(logs, options.onProgress, "unexpected", message);
+
+    if (projectId !== null && userId) {
+      await markProjectFailed(projectId, userId);
+    }
 
     return {
       ok: false,

@@ -5,12 +5,11 @@ import {
   useNavigation,
   useRouter,
 } from "expo-router";
-import { Download, LoaderCircle, X } from "lucide-react-native";
+import { LoaderCircle, X } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BackHandler,
   Dimensions,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -21,7 +20,6 @@ import {
 } from "react-native";
 
 import { Colors } from "@/constants/theme";
-import { useMangaLibrary } from "@/contexts/manga-library-context";
 import {
   processMangaGeneration,
   type ProcessLog,
@@ -39,7 +37,6 @@ export default function ProcessScreen() {
 
   const scheme = useColorScheme() ?? "light";
   const palette = Colors[scheme];
-  const { addManga } = useMangaLibrary();
 
   const prompt = typeof params.prompt === "string" ? params.prompt : "";
   const totalPages = Number(params.totalPages ?? "0");
@@ -50,7 +47,6 @@ export default function ProcessScreen() {
   const [logs, setLogs] = useState<ProcessLog[]>([]);
   const [pageImages, setPageImages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [pdfUri, setPdfUri] = useState<string | null>(null);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   const startedRef = useRef(false);
@@ -114,33 +110,18 @@ export default function ProcessScreen() {
       setLogs(result.data.logs);
       setTitle(result.data.title);
       setPageImages(result.data.pageImageUrls);
-      setPdfUri(result.data.pdfLocalUri);
-
-      addManga({
-        title: result.data.title,
-        prompt,
-        totalPages,
-        pageImageUrls: result.data.pageImageUrls,
-        pdfLocalUri: result.data.pdfLocalUri,
-      });
 
       setIsRunning(false);
     };
 
     run();
-  }, [addManga, prompt, totalPages]);
+  }, [prompt, totalPages]);
 
   const statusText = useMemo(() => {
     if (error) return "Generation failed";
     if (isRunning) return "Generation in progress";
     return "Generation complete";
   }, [error, isRunning]);
-
-  const openPdf = async () => {
-    if (!pdfUri) return;
-    console.log("Opening PDF at URI:", pdfUri);
-    await Linking.openURL(pdfUri);
-  };
 
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
@@ -234,21 +215,6 @@ export default function ProcessScreen() {
 
       {!isRunning ? (
         <View style={styles.footer}>
-          {pdfUri ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={openPdf}
-              style={({ pressed }) => [
-                styles.downloadBtn,
-                { backgroundColor: palette.tint },
-                pressed ? styles.pressed : null,
-              ]}
-            >
-              <Download size={18} color="#FFFFFF" />
-              <Text style={styles.downloadText}>Download PDF</Text>
-            </Pressable>
-          ) : null}
-
           <Pressable
             accessibilityRole="button"
             onPress={() => router.replace("/(tabs)/home" as never)}
@@ -400,19 +366,6 @@ const styles = StyleSheet.create({
   footer: {
     marginTop: 12,
     gap: 10,
-  },
-  downloadBtn: {
-    minHeight: 50,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
-  },
-  downloadText: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "800",
   },
   homeBtn: {
     minHeight: 46,

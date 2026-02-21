@@ -1,5 +1,4 @@
 // src/app/_layout.tsx
-import { MangaLibraryProvider } from "@/contexts/manga-library-context";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { Redirect, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -67,9 +66,7 @@ function RootInner() {
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <MangaLibraryProvider>
-        <RootInner />
-      </MangaLibraryProvider>
+      <RootInner />
     </AuthProvider>
   );
 }
